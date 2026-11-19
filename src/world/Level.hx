@@ -167,6 +167,10 @@ class Level {
                 sector.floorTexture = context.textureManager.get(sector.floorTextureName);
             }
 
+            if(sector.ceilingTexture == null && sector.ceilingTextureName != null) {
+                sector.ceilingTexture = context.textureManager.get(sector.ceilingTextureName);
+            }
+
             for(wall in sector.walls) {
                 if(wall.texture == null && wall.textureName != null) {
                     wall.texture = context.textureManager.get(wall.textureName);
@@ -247,6 +251,7 @@ class Level {
             }
 
             sector.floorTextureName = room.floorTextureName;
+            sector.ceilingTextureName = room.ceilingTextureName;
             sector.bottom = room.bottom;
             sector.top = room.top;
             sector.computeCenter();

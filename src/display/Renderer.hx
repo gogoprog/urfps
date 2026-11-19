@@ -410,8 +410,8 @@ class Renderer {
                         drawFloorColumn(sector.floorTexture, x, bottom, screenHeight, -sector.bottom);
                     }
 
-                    if(top > 0 && sector.floorTexture != null) {
-                        drawCeilingColumn(sector.floorTexture, x, 0, top, -sector.top);
+                    if(top > 0 && sector.ceilingTexture != null) {
+                        drawCeilingColumn(sector.ceilingTexture, x, 0, top, -sector.top);
                     }
 
                     --i;

@@ -11,6 +11,7 @@ typedef Wall = {
 typedef Room = {
     var walls:Array<Int>;
     var floorTextureName:String;
+    @:optional var ceilingTextureName:String;
     var bottom:Float;
     var top:Float;
     @:optional var door:Bool;
