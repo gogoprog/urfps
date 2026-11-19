@@ -112,6 +112,9 @@ class Renderer {
     public var halfHorizontalFov:Float;
     var depth:js.lib.Float32Array;
     var floorMap:js.lib.Int32Array;
+    var flatRayX:js.lib.Float64Array;
+    var flatRayY:js.lib.Float64Array;
+    var flatRowFactor:js.lib.Float64Array;
     var cameraTransform:math.Transform;
     var sprites:Array<Sprite> = [];
     var quads:Array<Quad> = [];
@@ -139,6 +142,14 @@ class Renderer {
         halfScreenHeightByTanFov = halfScreenHeight / Math.tan(halfVerticalFov);
         halfHorizontalFov = Math.atan2(halfScreenWidth, halfScreenHeightByTanFov);
         this.cameraTransform = cameraTransform;
+        flatRayX = new js.lib.Float64Array(screenWidth);
+        flatRayY = new js.lib.Float64Array(screenWidth);
+        flatRowFactor = new js.lib.Float64Array(screenHeight);
+        var pos_z = 0.5 * screenHeight;
+
+        for(y in 0...screenHeight) {
+            flatRowFactor[y] = pos_z / (y - halfScreenHeight);
+        }
     }
 
     public function registerFont(name, texture_name, char_width, char_height) {
@@ -220,74 +231,53 @@ class Renderer {
         }
     }
 
-    function drawFloorColumn(texture:Framebuffer, x:Int, top:Int, bottom:Int, offset:Float) {
-        var camPos = cameraTransform.position;
+    function prepareFlats() {
         var a = cameraTransform.angle;
-        var dir:Point = [0, 0];
-        dir.setFromAngle(a);
         var o = 0.66;
-        var plane:Point = [ - o * Math.sin(a), o * Math.cos(a)];
-        var rayDirX0 = dir.x - plane.x;
-        var rayDirY0 = dir.y - plane.y;
-        var rayDirX1 = dir.x + plane.x;
-        var rayDirY1 = dir.y + plane.y;
-        var scale = (cameraTransform.y + offset) / 25;
-        var c = 0.0125;
-        var posZ = 0.5 * screenHeight;
+        var dir_x = Math.cos(a);
+        var dir_y = Math.sin(a);
+        var plane_x = -o * Math.sin(a);
+        var plane_y = o * Math.cos(a);
+        var ray_x0 = dir_x - plane_x;
+        var ray_y0 = dir_y - plane_y;
+        var step_x = 2 * plane_x / screenWidth;
+        var step_y = 2 * plane_y / screenWidth;
 
-        for(y in top...bottom) {
-            var p = Std.int(y - halfScreenHeight);
-            var rowDistance = scale * posZ / p ;
-            var floorStepX = rowDistance * (rayDirX1 - rayDirX0) / screenWidth;
-            var floorStepY = rowDistance * (rayDirY1 - rayDirY0) / screenWidth;
-            var floorX = camPos.x * c + rowDistance * rayDirX0;
-            var floorY = camPos.y * c + rowDistance * rayDirY0;
-            var cellX = Std.int(floorX);
-            var cellY = Std.int(floorY);
-            {
-                floorX += x * floorStepX;
-                floorY += x * floorStepY;
-                var tx = Std.int(texture.width * (floorX - cellX)) & (texture.width - 1);
-                var ty = Std.int(texture.height * (floorY - cellY)) & (texture.height - 1);
-                var texIndex = (texture.width * ty + tx);
-                copyPixel32(texture, backbuffer, texIndex, getBackbufferIndex(x, y));
-            }
+        for(x in 0...screenWidth) {
+            flatRayX[x] = ray_x0 + x * step_x;
+            flatRayY[x] = ray_y0 + x * step_y;
         }
     }
 
-    function drawCeilingColumn(texture:Framebuffer, x:Int, top:Int, bottom:Int, offset:Float) {
-        var camPos = cameraTransform.position;
-        var a = cameraTransform.angle;
-        var dir:Point = [0, 0];
-        dir.setFromAngle(a);
-        var o = 0.66;
-        var plane:Point = [ - o * Math.sin(a), o * Math.cos(a)];
-        var rayDirX0 = dir.x - plane.x;
-        var rayDirY0 = dir.y - plane.y;
-        var rayDirX1 = dir.x + plane.x;
-        var rayDirY1 = dir.y + plane.y;
-        var scale = (cameraTransform.y + offset) / 25;
-        var c = -0.0125;
-        var posZ = 0.5 * screenHeight;
+    inline function drawFlatColumn(texture:Framebuffer, x:Int, top:Int, bottom:Int, offset:Float, c:Float, sign:Float) {
+        var tw = texture.width;
+        var th = texture.height;
+        var wmask = tw - 1;
+        var hmask = th - 1;
+        var scale = sign * (cameraTransform.y + offset) / 25;
+        var base_x = tw * cameraTransform.position.x * c;
+        var base_y = th * cameraTransform.position.y * c;
+        var ray_x = tw * scale * flatRayX[x];
+        var ray_y = th * scale * flatRayY[x];
+        var src = texture.data32;
+        var dst = backbuffer.data32;
+        var index = top * screenWidth + x;
 
         for(y in top...bottom) {
-            var p = Std.int(- y + halfScreenHeight);
-            var rowDistance = scale * posZ / p ;
-            var floorStepX = rowDistance * (rayDirX1 - rayDirX0) / screenWidth;
-            var floorStepY = rowDistance * (rayDirY1 - rayDirY0) / screenWidth;
-            var floorX = camPos.x * c + rowDistance * rayDirX0;
-            var floorY = camPos.y * c + rowDistance * rayDirY0;
-            var cellX = Std.int(floorX);
-            var cellY = Std.int(floorY);
-            {
-                floorX += x * floorStepX;
-                floorY += x * floorStepY;
-                var tx = Std.int(texture.width * (floorX - cellX)) & (texture.width - 1);
-                var ty = Std.int(texture.height * (floorY - cellY)) & (texture.height - 1);
-                var texIndex = (texture.width * ty + tx);
-                copyPixel32(texture, backbuffer, texIndex, getBackbufferIndex(x, y));
-            }
+            var d = flatRowFactor[y];
+            var tx = Std.int(Math.floor(base_x + d * ray_x)) & wmask;
+            var ty = Std.int(Math.floor(base_y + d * ray_y)) & hmask;
+            dst[index] = src[tw * ty + tx];
+            index += screenWidth;
         }
+    }
+
+    inline function drawFloorColumn(texture:Framebuffer, x:Int, top:Int, bottom:Int, offset:Float) {
+        drawFlatColumn(texture, x, top, bottom, offset, 0.0125, 1.0);
+    }
+
+    inline function drawCeilingColumn(texture:Framebuffer, x:Int, top:Int, bottom:Int, offset:Float) {
+        drawFlatColumn(texture, x, top, bottom, offset, -0.0125, -1.0);
     }
 
     function getWallBottom(offset) {
@@ -333,6 +323,7 @@ class Renderer {
     public function drawWalls(sectors:Array<world.Sector>) {
         var wallH = 13;
         var camPos = cameraTransform.position;
+        prepareFlats();
 
         for(x in 0...screenWidth) {
             var a2 = Math.atan2(x - halfScreenWidth, halfScreenHeightByTanFov);
