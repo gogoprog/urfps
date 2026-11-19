@@ -7,6 +7,8 @@ animations/shotgun-idle.json
 effects.json
 levels/corridor.json
 levels/first.json
+levels/keep.json
+levels/perf.json
 manifest.txt
 menu.json
 monsters.json
